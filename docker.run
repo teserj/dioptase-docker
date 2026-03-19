@@ -1,0 +1,11 @@
+#!/bin/bash
+
+docker run -it \
+    --privileged \
+    -v /dev:/dev \
+    -v /run/udev:/run/udev:ro \
+    -v $(pwd):/workspace \
+    -v "$HOME/.claude:/root/.claude" \
+    -v "$HOME/.claude.json:/root/.claude.json" \
+    -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+    embedded-dev
