@@ -1,11 +1,17 @@
 #!/bin/bash
 
 docker run -it \
-    --privileged \
+    --cap-add=NET_ADMIN \
+    --cap-add=NET_RAW \
     -v /dev:/dev \
     -v /run/udev:/run/udev:ro \
+    --device-cgroup-rule='c 188:* rmw' \
+    --device-cgroup-rule='c 166:* rmw' \
     -v $(pwd):/workspace \
-    -v "$HOME/.claude:/root/.claude" \
-    -v "$HOME/.claude.json:/root/.claude.json" \
+    -v "$HOME/.claude:/home/node/.claude" \
+    -v "$HOME/.claude.json:/home/node/.claude.json" \
+    -v "$HOME/.ssh:/home/node/.ssh:ro" \
     -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-    embedded-dev
+    -e IS_SANDBOX=1 \
+    embedded-dev \
+    bash -c "sudo /usr/local/bin/init-firewall.sh && exec /bin/bash"
