@@ -4,31 +4,31 @@ A Docker-based development environment for embedded systems work, with USB/seria
 
 ## Prerequisites
 
-### 1. Claude Code Authentication on Host
-
-Claude Code must be authenticated on the host before running the container. The container inherits credentials via bind-mounts — no in-container login is required.
-
-**Install Claude Code on host:**
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-**Authenticate:**
-```bash
-claude
-```
-Complete the OAuth flow (Claude.ai Pro subscription or API key). This creates:
-- `~/.claude/` — settings and credentials directory
-- `~/.claude.json` — session state
-
-Both are required. Verify they exist before running the container:
-```bash
-ls -la ~/.claude/ ~/.claude.json
-```
-
-### 2. Docker
+### 1. Docker
 
 Docker Engine must be installed and running on the host.
+
+### 2. GitHub SSH Key
+
+An SSH key linked to your GitHub account is required to access the Claude marketplace and install extensions from `github.com/anthropics`. The container uses SSH agent forwarding — no in-container setup is needed.
+
+**Ensure your key is loaded in the host ssh-agent:**
+```bash
+ssh-add ~/.ssh/id_ed25519
+```
+If you don't have a key yet: `ssh-keygen -t ed25519 -C "your_email@example.com"`, then run the above.
+
+**Add your public key to GitHub** (one-time):
+1. Copy it: `cat ~/.ssh/id_ed25519.pub`
+2. Go to **GitHub → Settings → SSH and GPG keys → New SSH key** and paste it
+
+**Verify the connection on the host:**
+```bash
+ssh -T git@github.com
+```
+Expected response: `Hi <username>! You've successfully authenticated...`
+
+Once verified on the host, the same identity is available inside the container via the forwarded agent socket.
 
 ### 3. (Optional) ANTHROPIC_API_KEY
 
@@ -62,7 +62,14 @@ This mounts:
 - `/dev` — full host device tree for hot-plug USB/serial access
 - `/run/udev` — udev metadata for device attribute queries
 - `$(pwd)` → `/workspace` — current directory as the working directory
-- `~/.claude` and `~/.claude.json` — Claude Code credentials from host
+- `claude-user/` → `/home/node/.claude` — Claude Code settings and credentials (auto-created)
+- `claude-user.json` → `/home/node/.claude.json` — Claude session state (auto-created)
+
+On first run, authenticate inside the container:
+```bash
+claude
+```
+Credentials are saved to `claude-user/` and persist across container restarts.
 
 ## USB and Serial Device Access
 
