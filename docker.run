@@ -1,5 +1,53 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Persistent Claude config: mount the project-local claude-user directory so
+# settings survive container rebuilds. Falls back gracefully if it doesn't exist.
+[ -d "$SCRIPT_DIR/claude-user" ] || mkdir -p "$SCRIPT_DIR/claude-user"
+CLAUDE_MOUNT=(-v "$SCRIPT_DIR/claude-user:/home/node/.claude")
+
+CLAUDE_JSON_MOUNT=()
+[ -f "$SCRIPT_DIR/claude-user.json" ] || echo '{}' > "$SCRIPT_DIR/claude-user.json"
+CLAUDE_JSON_MOUNT=(-v "$SCRIPT_DIR/claude-user.json:/home/node/.claude.json")
+
+# Git config: mount dotfiles/.gitconfig so git identity persists across rebuilds.
+# Create a minimal stub if the file doesn't exist yet.
+GITCONFIG_MOUNT=()
+if [ ! -f "$SCRIPT_DIR/dotfiles/.gitconfig" ]; then
+    mkdir -p "$SCRIPT_DIR/dotfiles"
+    cat > "$SCRIPT_DIR/dotfiles/.gitconfig" <<'EOF'
+[user]
+	name = Your Name
+	email = you@example.com
+EOF
+fi
+GITCONFIG_MOUNT=(-v "$SCRIPT_DIR/dotfiles/.gitconfig:/home/node/.gitconfig")
+
+# SSH known_hosts: persist host fingerprints so they survive container rebuilds.
+# Mounted as a single file rather than the whole ~/.ssh/ to avoid exposing keys.
+SSH_KNOWN_HOSTS_MOUNT=()
+if [ ! -f "$SCRIPT_DIR/dotfiles/known_hosts" ]; then
+    mkdir -p "$SCRIPT_DIR/dotfiles"
+    touch "$SCRIPT_DIR/dotfiles/known_hosts"
+fi
+SSH_KNOWN_HOSTS_MOUNT=(-v "$SCRIPT_DIR/dotfiles/known_hosts:/home/node/.ssh/known_hosts")
+
+# SSH agent forwarding: Docker Desktop on macOS exposes a fixed socket path;
+# on Linux the socket path comes from SSH_AUTH_SOCK in the environment.
+SSH_AGENT_OPTS=()
+if [ "$(uname)" = "Darwin" ]; then
+    SSH_AGENT_OPTS=(
+        -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+        -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+    )
+elif [ -n "$SSH_AUTH_SOCK" ]; then
+    SSH_AGENT_OPTS=(
+        -e SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+        -v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK"
+    )
+fi
+
 docker run -it \
     --cap-add=NET_ADMIN \
     --cap-add=NET_RAW \
@@ -7,11 +55,11 @@ docker run -it \
     -v /run/udev:/run/udev:ro \
     --device-cgroup-rule='c 188:* rmw' \
     --device-cgroup-rule='c 166:* rmw' \
-    -v $(pwd):/workspace \
-    -v "$HOME/.claude:/home/node/.claude" \
-    -v "$HOME/.claude.json:/home/node/.claude.json" \
-    -v "$HOME/.ssh:/home/node/.ssh:ro" \
-    -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-    -e IS_SANDBOX=1 \
+    "${CLAUDE_MOUNT[@]}" \
+    "${CLAUDE_JSON_MOUNT[@]}" \
+    "${GITCONFIG_MOUNT[@]}" \
+    "${SSH_KNOWN_HOSTS_MOUNT[@]}" \
+    -v "$(pwd):/workspace" \
+    "${SSH_AGENT_OPTS[@]}" \
     embedded-dev \
     bash -c "sudo /usr/local/bin/init-firewall.sh && exec /bin/bash"

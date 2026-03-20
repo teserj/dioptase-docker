@@ -38,8 +38,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0 \
     picocom \
     minicom \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && pip install pyserial --break-system-packages
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Pre-install dioptase Python dependencies at build time
+RUN pip install --break-system-packages \
+    "click>=8.1" "httpx>=0.27" "prompt-toolkit>=3.0" "pyserial>=3.5" "rich>=13.0" \
+    hatchling
 
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
@@ -56,15 +60,17 @@ RUN echo 'SUBSYSTEM=="usb", MODE="0666"' >> /etc/udev/rules.d/99-usb.rules && \
 ENV DEVCONTAINER=true
 
 # Create workspace and config directories
-RUN mkdir -p /workspace /home/node/.claude && \
-    chown -R node:node /workspace /home/node/.claude
+RUN mkdir -p /workspace && chown -R node:node /workspace
+
+# Create ~/.ssh with correct permissions so known_hosts can be bind-mounted
+RUN mkdir -p /home/node/.ssh && chmod 700 /home/node/.ssh && chown -R node:node /home/node/.ssh
 
 WORKDIR /workspace
 
 # Install global packages as node user
 USER node
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV PATH=$PATH:/usr/local/share/npm-global/bin
+ENV PATH=$PATH:/usr/local/share/npm-global/bin:/home/node/.local/bin
 
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
